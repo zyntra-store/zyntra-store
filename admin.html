@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZYNTRA — Admin Orders</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{ --ink:#1A1A2E; --indigo:#2B2560; --coral:#FF5A36; --teal:#00A99D; --bg:#FAFAF8; --line:rgba(26,26,46,0.12); --muted:#6B6B7A; }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--ink); font-family:'Inter', sans-serif;}
+  h1{font-family:'Manrope', sans-serif; font-weight:800;}
+  .mono{font-family:'IBM Plex Mono', monospace;}
+  header{background:var(--indigo); color:#fff; padding:1.2rem 5vw; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;}
+  main{padding:2rem 5vw;}
+  .login-box{max-width:380px; margin:4rem auto; background:#fff; border:1px solid var(--line); border-radius:10px; padding:2rem;}
+  .login-box input{width:100%; padding:0.7rem; border:1px solid var(--line); border-radius:6px; margin:0.8rem 0; font-family:inherit;}
+  .login-box button, .refresh-btn{background:var(--coral); color:#fff; border:none; padding:0.7rem 1.2rem; border-radius:6px; font-weight:600; cursor:pointer;}
+  .error-msg{color:#B23B24; font-size:0.85rem; margin-top:0.5rem;}
+  table{width:100%; border-collapse:collapse; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 4px 20px rgba(26,26,46,0.06);}
+  th, td{padding:0.8rem 1rem; text-align:left; font-size:0.85rem; border-bottom:1px solid var(--line);}
+  th{background:#F0EEFB; font-family:'IBM Plex Mono', monospace; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted);}
+  tr:last-child td{border-bottom:none;}
+  .status-badge{padding:0.25rem 0.6rem; border-radius:4px; font-size:0.72rem; font-weight:700; font-family:'IBM Plex Mono', monospace;}
+  .status-pending{background:#FFF3E0; color:#B26A00;}
+  .status-confirmed{background:#E3F2FD; color:#1565C0;}
+  .status-shipped{background:#EDE7F6; color:#5E35B1;}
+  .status-delivered{background:#E8F5E9; color:#2E7D32;}
+  .status-cancelled{background:#FDECEA; color:#C62828;}
+  select{padding:0.35rem; border-radius:5px; border:1px solid var(--line); font-family:inherit;}
+  .items-list{font-size:0.78rem; color:var(--muted); max-width:220px;}
+  .empty-msg{text-align:center; padding:3rem; color:var(--muted);}
+</style>
+</head>
+<body>
+
+<div class="login-box" id="loginBox">
+  <h1 style="font-size:1.3rem; margin-bottom:0.5rem;">ZYNTRA Admin</h1>
+  <p style="font-size:0.85rem; color:var(--muted);">Enter your admin key to view orders.</p>
+  <input type="password" id="adminKeyInput" placeholder="Admin key">
+  <button id="loginBtn" style="width:100%;">Enter</button>
+  <div class="error-msg" id="loginError"></div>
+</div>
+
+<div id="dashboard" style="display:none;">
+  <header>
+    <h1 style="font-size:1.3rem;">ZYNTRA — Orders</h1>
+    <button class="refresh-btn" id="refreshBtn">↻ Refresh</button>
+  </header>
+  <main>
+    <div id="ordersWrap"></div>
+  </main>
+</div>
+
+<script>
+  let adminKey = '';
+
+  document.getElementById('loginBtn').addEventListener('click', async () => {
+    adminKey = document.getElementById('adminKeyInput').value.trim();
+    const ok = await loadOrders();
+    if(ok){
+      document.getElementById('loginBox').style.display = 'none';
+      document.getElementById('dashboard').style.display = 'block';
+    }
+  });
+
+  document.getElementById('refreshBtn').addEventListener('click', loadOrders);
+
+  function statusOptions(current){
+    const statuses = ['pending','confirmed','shipped','delivered','cancelled'];
+    return statuses.map(s => `<option value="${s}" ${s===current?'selected':''}>${s}</option>`).join('');
+  }
+
+  async function loadOrders(){
+    const errEl = document.getElementById('loginError');
+    errEl.textContent = '';
+    try{
+      const res = await fetch('/api/admin/orders', { headers: { 'x-admin-key': adminKey } });
+      if(res.status === 401){
+        errEl.textContent = 'Invalid admin key.';
+        return false;
+      }
+      const orders = await res.json();
+      renderOrders(orders);
+      return true;
+    }catch(err){
+      errEl.textContent = 'Could not reach the server.';
+      return false;
+    }
+  }
+
+  function renderOrders(orders){
+    const wrap = document.getElementById('ordersWrap');
+    if(orders.length === 0){
+      wrap.innerHTML = '<p class="empty-msg">No orders yet.</p>';
+      return;
+    }
+    wrap.innerHTML = `
+      <table>
+        <thead>
+          <tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Payment</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          ${orders.map(o => `
+            <tr>
+              <td>
+                <span class="mono">${o.orderId}</span><br>
+                <span style="color:var(--muted); font-size:0.72rem;">${new Date(o.createdAt).toLocaleString()}</span>
+              </td>
+              <td>
+                ${o.customer.name}<br>
+                <span style="color:var(--muted); font-size:0.78rem;">${o.customer.phone}</span><br>
+                <span style="color:var(--muted); font-size:0.78rem;">${o.customer.address}, ${o.customer.city}</span>
+              </td>
+              <td class="items-list">${o.items.map(i => `${i.name} ×${i.qty}`).join('<br>')}</td>
+              <td class="mono">${o.total} ${o.currency}</td>
+              <td>${o.paymentMethod.toUpperCase()}</td>
+              <td>
+                <span class="status-badge status-${o.status}">${o.status}</span><br>
+                <select data-order="${o.orderId}" class="status-select" style="margin-top:0.4rem;">
+                  ${statusOptions(o.status)}
+                </select>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+
+    document.querySelectorAll('.status-select').forEach(sel => {
+      sel.addEventListener('change', async () => {
+        await fetch(`/api/admin/orders/${sel.dataset.order}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+          body: JSON.stringify({ status: sel.value }),
+        });
+        loadOrders();
+      });
+    });
+  }
+</script>
+</body>
+</html>
